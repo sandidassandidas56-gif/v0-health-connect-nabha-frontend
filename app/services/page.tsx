@@ -1,3 +1,5 @@
+"use client"
+import React, { useState } from "react"
 import { Navigation } from "@/components/navigation"
 import { Footer } from "@/components/footer"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -45,6 +47,36 @@ export default function ServicesPage() {
     },
   ]
 
+  // File upload state and logic
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function handleUpload() {
+    if (!selectedFile) return;
+    setUploading(true);
+    setUploadError("");
+    setUploadSuccess(false);
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    try {
+      const res = await fetch("/api/reports", {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success) {
+        setUploadSuccess(true);
+      } else {
+        setUploadError(data.message || "Upload failed");
+      }
+    } catch (err) {
+      setUploadError("Network error");
+    }
+    setUploading(false);
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -78,6 +110,41 @@ export default function ServicesPage() {
                     </li>
                   ))}
                 </ul>
+                {/* Medical Records Upload UI */}
+                {service.title === "Medical Records" && (
+                  <div className="mt-6">
+                    <label className="block text-sm font-medium mb-2">Upload Medical Report</label>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={e => {
+                        if (e.target.files && e.target.files[0]) {
+                          setSelectedFile(e.target.files[0]);
+                          setUploadSuccess(false);
+                          setUploadError("");
+                        }
+                      }}
+                      className="block w-full text-sm text-muted-foreground mb-2"
+                    />
+                    <Button
+                      size="sm"
+                      disabled={!selectedFile || uploading}
+                      onClick={handleUpload}
+                      className="mr-2"
+                    >
+                      {uploading ? "Uploading..." : "Upload"}
+                    </Button>
+                    {uploadSuccess && (
+                      <span className="text-green-600 text-sm ml-2">Report uploaded!</span>
+                    )}
+                    {uploadError && (
+                      <span className="text-red-600 text-sm ml-2">{uploadError}</span>
+                    )}
+                    {selectedFile && !uploading && (
+                      <div className="text-xs text-muted-foreground mt-2">Selected: {selectedFile.name}</div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

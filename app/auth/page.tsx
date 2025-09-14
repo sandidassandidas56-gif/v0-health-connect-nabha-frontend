@@ -17,35 +17,81 @@ export default function AuthPage() {
     email: "",
     password: "",
     confirmPassword: "",
-    fullName: "",
     phone: "",
+    age: "",
+    gender: "",
+    adhaar: "",
     role: "",
     licenseNumber: "",
     specialization: "",
     workerId: "",
+    address: {
+      fullName: "",
+      fatherName: "",
+      atpo: "",
+      dist: "",
+      state: "",
+      pin: "",
+      landmark: "",
+    },
   })
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
+  const handleInputChange = (field: string, value: string, nested = false) => {
+    if (nested) {
+      setFormData((prev) => ({
+        ...prev,
+        address: {
+          ...prev.address,
+          [field]: value,
+        },
+      }));
+    } else {
+      setFormData((prev) => ({ ...prev, [field]: value }));
+    }
   }
 
+  const [errorMsg, setErrorMsg] = useState("");
   const handleSubmit = async (type: "login" | "signup") => {
-    setIsLoading(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    // Redirect based on role
-    const redirectPaths = {
-      patient: "/dashboard/patient",
-      doctor: "/dashboard/doctor",
-      asha: "/dashboard/asha",
+    setIsLoading(true);
+    setErrorMsg("");
+    if (type === "login") {
+      try {
+        const res = await fetch("/api/auth", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: formData.email, password: formData.password })
+        });
+        const data = await res.json();
+        if (data.success) {
+          // Redirect based on role
+          const redirectPaths = {
+            patient: "/dashboard/patient",
+            doctor: "/dashboard/doctor",
+            asha: "/dashboard/asha",
+          };
+          if (formData.role && redirectPaths[formData.role as keyof typeof redirectPaths]) {
+            window.location.href = redirectPaths[formData.role as keyof typeof redirectPaths];
+          }
+        } else {
+          setErrorMsg(data.error || "Login failed");
+        }
+      } catch (err) {
+        setErrorMsg("Network error");
+      }
+    } else {
+      // Simulate signup (no backend yet)
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Redirect based on role
+      const redirectPaths = {
+        patient: "/dashboard/patient",
+        doctor: "/dashboard/doctor",
+        asha: "/dashboard/asha",
+      };
+      if (formData.role && redirectPaths[formData.role as keyof typeof redirectPaths]) {
+        window.location.href = redirectPaths[formData.role as keyof typeof redirectPaths];
+      }
     }
-
-    if (formData.role && redirectPaths[formData.role as keyof typeof redirectPaths]) {
-      window.location.href = redirectPaths[formData.role as keyof typeof redirectPaths]
-    }
-
-    setIsLoading(false)
+    setIsLoading(false);
   }
 
   const getRoleIcon = (role: string) => {
@@ -146,11 +192,15 @@ export default function AuthPage() {
                   >
                     {isLoading ? "Signing In..." : "Sign In"}
                   </Button>
+                  {errorMsg && (
+                    <div className="text-red-600 text-sm mt-2">{errorMsg}</div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
 
             <TabsContent value="signup">
+
               <Card>
                 <CardHeader>
                   <CardTitle>Create New Account</CardTitle>
@@ -186,14 +236,137 @@ export default function AuthPage() {
                     </Select>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-name">Full Name</Label>
-                    <Input
-                      id="signup-name"
-                      placeholder="Enter your full name"
-                      value={formData.fullName}
-                      onChange={(e) => handleInputChange("fullName", e.target.value)}
-                    />
+                  {/* Personal Data Section */}
+                  <div className="mb-6 pb-4 border-b border-muted">
+                    <h2 className="font-semibold mb-2">Personal Data</h2>
+                    <div className="space-y-4">
+                      <Label htmlFor="signup-age">Age</Label>
+                      <Input
+                        id="signup-age"
+                        type="number"
+                        min="0"
+                        placeholder="Enter your age"
+                        value={formData.age}
+                        onChange={(e) => handleInputChange("age", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-4">
+                      <Label htmlFor="signup-gender">Gender</Label>
+                      <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="male">Male</SelectItem>
+                          <SelectItem value="female">Female</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-adhaar">Adhaar Number</Label>
+                      <Input
+                        id="signup-adhaar"
+                        placeholder="Enter your Adhaar number"
+                        value={formData.adhaar}
+                        onChange={(e) => handleInputChange("adhaar", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-phone">Phone Number</Label>
+                      <Input
+                        id="signup-phone"
+                        type="tel"
+                        placeholder="Enter your phone number"
+                        value={formData.phone}
+                        onChange={(e) => handleInputChange("phone", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-email">Email</Label>
+                      <Input
+                        id="signup-email"
+                        type="email"
+                        placeholder="Enter your email"
+                        value={formData.email}
+                        onChange={(e) => handleInputChange("email", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  {/* Address Section */}
+                  <div className="mb-6 pb-4 border-b border-muted">
+                    <h2 className="font-semibold mb-2">Address</h2>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-fullName">Your Name</Label>
+                      <Input
+                        id="signup-fullName"
+                        placeholder="Enter your name"
+                        value={formData.address.fullName}
+                        onChange={(e) => handleInputChange("fullName", e.target.value, true)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-fatherName">Father's Name</Label>
+                      <Input
+                        id="signup-fatherName"
+                        placeholder="Enter your father's name"
+                        value={formData.address.fatherName}
+                        onChange={(e) => handleInputChange("fatherName", e.target.value, true)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-atpo">At/PO</Label>
+                      <Input
+                        id="signup-atpo"
+                        placeholder="Enter your At/PO"
+                        value={formData.address.atpo}
+                        onChange={(e) => handleInputChange("atpo", e.target.value, true)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-dist">District</Label>
+                      <Select value={formData.address.dist} onValueChange={(value) => handleInputChange("dist", value, true)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select district" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Nabha">Nabha</SelectItem>
+                          <SelectItem value="Patiala">Patiala</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-state">State</Label>
+                      <Select value={formData.address.state} onValueChange={(value) => handleInputChange("state", value, true)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Punjab">Punjab</SelectItem>
+                          <SelectItem value="Haryana">Haryana</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-pin">PIN Code</Label>
+                      <Input
+                        id="signup-pin"
+                        placeholder="Enter your PIN code"
+                        value={formData.address.pin}
+                        onChange={(e) => handleInputChange("pin", e.target.value, true)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-landmark">Landmark</Label>
+                      <Input
+                        id="signup-landmark"
+                        placeholder="Enter landmark (optional)"
+                        value={formData.address.landmark}
+                        onChange={(e) => handleInputChange("landmark", e.target.value, true)}
+                      />
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -280,7 +453,7 @@ export default function AuthPage() {
                     className="w-full"
                     onClick={() => handleSubmit("signup")}
                     disabled={
-                      isLoading || !formData.role || !formData.email || !formData.password || !formData.fullName
+                      isLoading || !formData.role || !formData.email || !formData.password || !formData.address.fullName
                     }
                   >
                     {isLoading ? "Creating Account..." : "Create Account"}

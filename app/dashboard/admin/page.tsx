@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -38,6 +38,25 @@ import {
 } from "lucide-react"
 
 export default function AdminDashboard() {
+  // Consultations state
+  const [consultations, setConsultations] = useState<any[]>([]);
+  const [consultationsLoading, setConsultationsLoading] = useState(false);
+  const [consultationsError, setConsultationsError] = useState("");
+
+  // Fetch consultations on mount
+  React.useEffect(() => {
+    setConsultationsLoading(true);
+    fetch("/api/consultations")
+      .then(res => res.json())
+      .then(data => {
+        setConsultations(data.consultations || []);
+        setConsultationsLoading(false);
+      })
+      .catch(() => {
+        setConsultationsError("Failed to load consultations");
+        setConsultationsLoading(false);
+      });
+  }, []);
   const [selectedPeriod, setSelectedPeriod] = useState("monthly")
   const [selectedRegion, setSelectedRegion] = useState("all")
 
@@ -255,6 +274,35 @@ export default function AdminDashboard() {
                 </Card>
               ))}
             </div>
+
+            {/* Consultations List from API */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Consultations</CardTitle>
+                <CardDescription>Fetched from backend API</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {consultationsLoading && <div>Loading consultations...</div>}
+                {consultationsError && <div className="text-red-600">{consultationsError}</div>}
+                {!consultationsLoading && consultations.length > 0 && (
+                  <ul className="space-y-2">
+                    {consultations.map((c) => (
+                      <li key={c.id} className="border rounded p-2 flex justify-between items-center">
+                        <span>
+                          <strong>{c.doctor}</strong> with <strong>{c.patient}</strong> on {c.date}
+                        </span>
+                        <span className="text-xs px-2 py-1 rounded bg-muted-foreground text-muted">
+                          {c.status}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!consultationsLoading && consultations.length === 0 && !consultationsError && (
+                  <div>No consultations found.</div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Disease Prevalence and Trends */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
