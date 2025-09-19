@@ -1,0 +1,1 @@
+self.__REACT_LOADABLE_MANIFEST='{"app\\\\dashboard\\\\doctor\\\\page.tsx -> @/components/VideoCallModal":{"id":29843,"files":["static/chunks/843.bb809137ea908552.js"]},"app\\\\dashboard\\\\patient\\\\page.tsx -> @/components/VideoCallModal":{"id":29843,"files":["static/chunks/843.bb809137ea908552.js"]}}';
