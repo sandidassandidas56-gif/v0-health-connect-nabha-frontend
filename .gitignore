@@ -2,10 +2,14 @@
 
 # dependencies
 /node_modules
+frontend/node_modules/
 
 # next.js
-/.next/
-/out/
+/\.next/
+frontend/.next/
+frontend/out/
+# Ignore public assets and cache
+frontend/public/
 
 # production
 /build
