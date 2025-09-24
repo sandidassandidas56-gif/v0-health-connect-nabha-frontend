@@ -51,46 +51,53 @@ export default function DoctorDashboard() {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const [inCall, setInCall] = useState(false);
 
-  // Mock data
+  // Real backend data state
+  const [doctorInfo, setDoctorInfo] = useState<any>(null);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [patients, setPatients] = useState<any[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
+  const [prescriptions, setPrescriptions] = useState<any[]>([]);
 
-  // TODO: Replace with real backend data for appointments, patient history, reports, and dashboard stats
+  // Fetch all dashboard data from backend
+  useEffect(() => {
+    // Example endpoints, update as needed
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const getHeaders = () => token ? { Authorization: `Bearer ${token}` } : undefined;
+    fetch("http://localhost:5001/api/doctor/profile", getHeaders() ? { headers: getHeaders() } : undefined)
+      .then(res => res.json())
+      .then(data => setDoctorInfo(data));
+    fetch("http://localhost:5001/api/doctor/appointments", getHeaders() ? { headers: getHeaders() } : undefined)
+      .then(res => res.json())
+      .then(data => setAppointments(data));
+    fetch("http://localhost:5001/api/doctor/patients", getHeaders() ? { headers: getHeaders() } : undefined)
+      .then(res => res.json())
+      .then(data => setPatients(data));
+    fetch("http://localhost:5001/api/doctor/reports", getHeaders() ? { headers: getHeaders() } : undefined)
+      .then(res => res.json())
+      .then(data => setReports(data));
+    fetch("http://localhost:5001/api/doctor/prescriptions", getHeaders() ? { headers: getHeaders() } : undefined)
+      .then(res => res.json())
+      .then(data => setPrescriptions(data));
+  }, []);
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "bg-red-100 text-red-800"
-      case "medium":
-        return "bg-yellow-100 text-yellow-800"
-      case "low":
-        return "bg-green-100 text-green-800"
-      default:
-        return "bg-gray-100 text-gray-800"
+  const handlePrescriptionSubmit = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : "";
+    const headers = {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+    const res = await fetch("http://localhost:5001/api/doctor/prescriptions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...prescriptionData, patientId: selectedPatient?.id })
+    });
+    if (res.ok) {
+      setPrescriptionData({ medication: "", dosage: "", frequency: "", duration: "", instructions: "" });
+      // Refresh prescriptions
+      fetch("http://localhost:5001/api/doctor/prescriptions", { headers })
+        .then(r => r.json())
+        .then(data => setPrescriptions(data));
     }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "upcoming":
-        return "bg-blue-100 text-blue-800"
-      case "in-progress":
-        return "bg-green-100 text-green-800"
-      case "completed":
-        return "bg-gray-100 text-gray-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
-
-  const handlePrescriptionSubmit = () => {
-    // Handle prescription submission
-    console.log("Prescription submitted:", prescriptionData)
-    setPrescriptionData({
-      medication: "",
-      dosage: "",
-      frequency: "",
-      duration: "",
-      instructions: "",
-    })
   }
 
   useEffect(() => {
@@ -137,13 +144,8 @@ export default function DoctorDashboard() {
     });
   };
 
-  // Mock user info (replace with real backend data)
-  const user = {
-    name: "Dr. Priya Sharma",
-    email: "priya.sharma@example.com",
-    role: "doctor",
-    phone: "9876543210"
-  };
+  // Use real doctor info from backend
+  const user = doctorInfo || { name: "", email: "", role: "doctor", phone: "" };
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -159,7 +161,7 @@ export default function DoctorDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold">Doctor Dashboard</h1>
-                <p className="opacity-90">{user.name} - General Medicine</p>
+                <p className="opacity-90">{user.name} {doctorInfo?.specialization ? `- ${doctorInfo.specialization}` : ""}</p>
               </div>
               <div className="flex items-center space-x-4">
                 <Button variant="secondary" size="sm">
@@ -185,10 +187,13 @@ export default function DoctorDashboard() {
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
-              {/* Dashboard Stats */}
-              {/* Dashboard Stats - Replace with backend data */}
+              {/* Dashboard Stats - Real data */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card><CardContent className="p-4">No dashboard stats available.</CardContent></Card>
+                {/* Example: show total appointments, patients, reports, prescriptions */}
+                <Card><CardContent className="p-4">Appointments: {appointments.length}</CardContent></Card>
+                <Card><CardContent className="p-4">Patients: {patients.length}</CardContent></Card>
+                <Card><CardContent className="p-4">Reports: {reports.length}</CardContent></Card>
+                <Card><CardContent className="p-4">Prescriptions: {prescriptions.length}</CardContent></Card>
               </div>
 
               {/* Today's Schedule */}
@@ -200,8 +205,20 @@ export default function DoctorDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {/* Today's Appointments - Replace with backend data */}
-                      <div>No appointments available.</div>
+                      {/* Today's Appointments - Real data */}
+                      {appointments.length === 0 ? (
+                        <div>No appointments available.</div>
+                      ) : (
+                        appointments.filter((a: any) => a.date === new Date().toISOString().slice(0,10)).map((a: any) => (
+                          <div key={a.id} className="border rounded-lg p-2 flex justify-between items-center">
+                            <div>
+                              <div className="font-semibold">{a.patientName}</div>
+                              <div className="text-sm text-muted-foreground">{a.time}</div>
+                            </div>
+                            <Badge>{a.status}</Badge>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -213,8 +230,20 @@ export default function DoctorDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {/* Pending Reports - Replace with backend data */}
-                      <div>No pending reports available.</div>
+                      {/* Pending Reports - Real data */}
+                      {reports.length === 0 ? (
+                        <div>No pending reports available.</div>
+                      ) : (
+                        reports.filter((r: any) => r.status === "pending").map((r: any) => (
+                          <div key={r.id} className="border rounded-lg p-2 flex justify-between items-center">
+                            <div>
+                              <div className="font-semibold">{r.patientName}</div>
+                              <div className="text-sm text-muted-foreground">{r.type}</div>
+                            </div>
+                            <Badge>{r.status}</Badge>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -262,8 +291,20 @@ export default function DoctorDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* All Appointments - Replace with backend data */}
-                    <div>No appointments available.</div>
+                    {/* All Appointments - Real data */}
+                    {appointments.length === 0 ? (
+                      <div>No appointments available.</div>
+                    ) : (
+                      appointments.map((a: any) => (
+                        <div key={a.id} className="border rounded-lg p-2 flex justify-between items-center">
+                          <div>
+                            <div className="font-semibold">{a.patientName}</div>
+                            <div className="text-sm text-muted-foreground">{a.date} {a.time}</div>
+                          </div>
+                          <Badge>{a.status}</Badge>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -292,8 +333,20 @@ export default function DoctorDashboard() {
                       </Select>
                     </div>
 
-                    {/* Patient Records - Replace with backend data */}
-                    <div>No patient records available.</div>
+                    {/* Patient Records - Real data */}
+                    {patients.length === 0 ? (
+                      <div>No patient records available.</div>
+                    ) : (
+                      patients.map((p: any) => (
+                        <div key={p.id} className="border rounded-lg p-2 flex justify-between items-center">
+                          <div>
+                            <div className="font-semibold">{p.name}</div>
+                            <div className="text-sm text-muted-foreground">{p.condition}</div>
+                          </div>
+                          <Badge>{p.status}</Badge>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -307,8 +360,20 @@ export default function DoctorDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* Medical Reports Review - Replace with backend data */}
-                    <div>No reports available.</div>
+                    {/* Medical Reports Review - Real data */}
+                    {reports.length === 0 ? (
+                      <div>No reports available.</div>
+                    ) : (
+                      reports.map((r: any) => (
+                        <div key={r.id} className="border rounded-lg p-2 flex justify-between items-center">
+                          <div>
+                            <div className="font-semibold">{r.patientName}</div>
+                            <div className="text-sm text-muted-foreground">{r.type}</div>
+                          </div>
+                          <Badge>{r.status}</Badge>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -324,12 +389,14 @@ export default function DoctorDashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="patient-select">Select Patient</Label>
-                      <Select>
+                      <Select onValueChange={id => setSelectedPatient(patients.find(p => p.id === id))}>
                         <SelectTrigger>
                           <SelectValue placeholder="Choose patient" />
                         </SelectTrigger>
                         <SelectContent>
-                          {/* Select Patient - Replace with backend data */}
+                          {patients.map((p: any) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -403,16 +470,22 @@ export default function DoctorDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <div className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-semibold">John Doe</h3>
-                          <p className="text-muted-foreground">Lisinopril 10mg - Once daily for 30 days</p>
-                          <p className="text-sm text-muted-foreground">Prescribed on 2024-01-12</p>
+                    {prescriptions.length === 0 ? (
+                      <div>No prescriptions available.</div>
+                    ) : (
+                      prescriptions.map((pr: any) => (
+                        <div key={pr.id} className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h3 className="font-semibold">{pr.patientName}</h3>
+                              <p className="text-muted-foreground">{pr.medication} {pr.dosage} - {pr.frequency} for {pr.duration}</p>
+                              <p className="text-sm text-muted-foreground">Prescribed on {pr.date}</p>
+                            </div>
+                            <Badge className="bg-green-100 text-green-800">Sent</Badge>
+                          </div>
                         </div>
-                        <Badge className="bg-green-100 text-green-800">Sent</Badge>
-                      </div>
-                    </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
