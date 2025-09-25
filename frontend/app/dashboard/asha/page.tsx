@@ -46,9 +46,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from "recharts"
 import { Users, MapPin, FileText, Activity, Heart, Baby, UserCheck, AlertTriangle, Upload } from "lucide-react"
+import MapPicker from '@/components/map-picker'
 
+
+import { mockPrescriptions, mockPatients, mockASHAProfile } from '@/data/asha-mock'
 
 export default function ASHADashboard() {
   const [selectedVillage, setSelectedVillage] = useState("")
@@ -68,21 +71,62 @@ export default function ASHADashboard() {
   })
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [ashaProfile, setAshaProfile] = useState<ASHAProfile | null>(null);
+  const [address, setAddress] = useState<any>(mockASHAProfile.address || { street: '', city: '', state: '', pincode: '', coords: { lat: 30.3573, lng: 76.0700 } })
   const [showDelivery, setShowDelivery] = useState<string | null>(null);
   const [deliveryStatus, setDeliveryStatus] = useState<{ [key: string]: boolean | null }>({});
 
   useEffect(() => {
     fetch("/api/prescriptions/asha") // API to get prescriptions for logged-in ASHA worker
       .then((res) => res.json())
-      .then((data) => setPrescriptions(data.prescriptions))
+      .then((data) => {
+        if (!data || !data.prescriptions || data.prescriptions.length === 0) {
+          // fallback to local mock data
+          setPrescriptions(mockPrescriptions as Prescription[])
+        } else {
+          setPrescriptions(data.prescriptions)
+        }
+      })
+      .catch(() => {
+        // on error, use mock data so UI remains populated
+        setPrescriptions(mockPrescriptions as Prescription[])
+      })
   }, [])
 
   useEffect(() => {
     // Fetch ASHA profile with address and assigned prescriptions
     fetch("/api/asha/profile")
       .then(res => res.json())
-      .then(data => setAshaProfile(data));
+      .then(data => {
+        if (!data || !data.name) {
+          setAshaProfile(mockASHAProfile as unknown as ASHAProfile)
+        } else {
+          setAshaProfile(data)
+        }
+      })
+      .catch(() => setAshaProfile(mockASHAProfile as unknown as ASHAProfile));
   }, []);
+
+  useEffect(() => {
+    if (ashaProfile && ashaProfile.address) setAddress({ ...ashaProfile.address, coords: (ashaProfile as any).coords || { lat: 30.3573, lng: 76.0700 } })
+  }, [ashaProfile])
+
+  const handleSaveAddress = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    fetch('/api/asha/address', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ address })
+    }).then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        setAshaProfile((prev: any) => ({ ...prev, address: data.address || address }))
+      } else {
+        setAshaProfile((prev: any) => ({ ...prev, address }))
+      }
+    }).catch(() => setAshaProfile((prev: any) => ({ ...prev, address })))
+  }
 
 
   const getPriorityColor = (priority: string) => {
@@ -127,6 +171,65 @@ export default function ASHADashboard() {
     })
   }
 
+  // Disease distribution data for charts (using mockPatients as fallback)
+  const diseaseCounts = mockPatients.reduce((acc: any, p: any) => {
+    acc[p.condition] = (acc[p.condition] || 0) + 1;
+    return acc;
+  }, {});
+  const diseaseData = Object.keys(diseaseCounts).map((k) => ({ name: k, value: diseaseCounts[k] }));
+  const COLORS = ["#8884d8", "#82ca9d", "#ffc658", "#ff7f7f", "#6e9ef8", "#a28cf0"];
+
+  // Monthly trends (last 6 months) generated deterministically from mock counts
+  const months = (() => {
+    const res: string[] = [];
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      res.push(d.toLocaleString('default', { month: 'short', year: 'numeric' }));
+    }
+    return res;
+  })();
+
+  const distributeCounts = (total: number, slots: number) => {
+    const base = Math.floor(total / slots);
+    const rem = total % slots;
+    return Array.from({ length: slots }).map((_, i) => base + (i < rem ? 1 : 0));
+  };
+
+  const prescriptionsPerMonth = distributeCounts(mockPrescriptions.length, months.length);
+  const patientsPerMonth = distributeCounts(mockPatients.length, months.length);
+
+  const monthlyData = months.map((m, idx) => ({
+    month: m,
+    prescriptions: prescriptionsPerMonth[idx],
+    newPatients: patientsPerMonth[idx],
+  }));
+
+  const avgPrescriptionsPerMonth = Math.round(mockPrescriptions.length / months.length) || 0;
+  const newPatientsThisMonth = patientsPerMonth[patientsPerMonth.length - 1] || 0;
+
+  // Build stacked disease data per month
+  const diseaseNames = Array.from(new Set(mockPatients.map(p => p.condition)));
+  const diseaseTotals: { [key: string]: number } = {};
+  diseaseNames.forEach((d) => {
+    diseaseTotals[d] = mockPatients.filter(p => p.condition === d).length;
+  });
+
+  // For each disease, distribute its total across months (simple deterministic split)
+  const diseaseMonthlyMap: { [disease: string]: number[] } = {};
+  diseaseNames.forEach((d) => {
+    diseaseMonthlyMap[d] = distributeCounts(diseaseTotals[d] || 0, months.length);
+  });
+
+  // Compose data suitable for a stacked BarChart
+  const diseaseMonthlyData = months.map((m, idx) => {
+    const obj: any = { month: m };
+    diseaseNames.forEach((d) => {
+      obj[d] = diseaseMonthlyMap[d][idx] || 0;
+    });
+    return obj;
+  });
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -161,25 +264,291 @@ export default function ASHADashboard() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
-            {/* Dashboard Stats - Placeholder */}
+            {/* Using mock data banner when backend is empty */}
+            <div className="p-3 rounded-md bg-popover text-popover-foreground border border-border">Using demo data to populate the dashboard.</div>
+
+            {/* Dashboard Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card><CardContent className="p-4">No stats available.</CardContent></Card>
-            </div>
+              <Card>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Total Patients</div>
+                    <div className="text-2xl font-bold">{mockPatients.length}</div>
+                  </div>
+                  <div className="bg-primary/10 text-primary p-3 rounded-lg">
+                    <Users className="h-6 w-6" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Assigned Prescriptions</div>
+                    <div className="text-2xl font-bold">{mockPrescriptions.length}</div>
+                  </div>
+                  <div className="bg-secondary/10 text-secondary p-3 rounded-lg">
+                    <FileText className="h-6 w-6" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Villages Covered</div>
+                    <div className="text-2xl font-bold">{Array.from(new Set(mockPatients.map(p => p.village))).length}</div>
+                  </div>
+                  <div className="bg-accent/10 text-accent p-3 rounded-lg">
+                    <MapPin className="h-6 w-6" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Open Follow-ups</div>
+                    <div className="text-2xl font-bold">{Math.max(1, Math.floor(mockPatients.length / 2))}</div>
+                  </div>
+                  <div className="bg-yellow-100 text-yellow-800 p-3 rounded-lg">
+                    <UserCheck className="h-6 w-6" />
+                  </div>
+                </CardContent>
+              </Card>
+              </div>
 
-            {/* Village Coverage - Placeholder */}
+              {/* Address Card for ASHA */}
+              <div className="mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Address</CardTitle>
+                    <CardDescription>Assigned ASHA worker address</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-medium">{address.street}</div>
+                        <div className="text-sm text-muted-foreground">{address.city}, {address.state} - {address.pincode}</div>
+                      </div>
+                      <div>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button size="sm">Edit</Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-3xl">
+                            <DialogHeader>
+                              <DialogTitle>Edit Address</DialogTitle>
+                              <DialogDescription>Drag the marker to select location and update address fields</DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <Input placeholder="Street" value={address.street} onChange={(e) => setAddress({ ...address, street: e.target.value })} />
+                              <div className="grid grid-cols-3 gap-2">
+                                <Input placeholder="City" value={address.city} onChange={(e) => setAddress({ ...address, city: e.target.value })} />
+                                <Input placeholder="State" value={address.state} onChange={(e) => setAddress({ ...address, state: e.target.value })} />
+                                <Input placeholder="Pincode" value={address.pincode} onChange={(e) => setAddress({ ...address, pincode: e.target.value })} />
+                              </div>
+                              <MapPicker apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY} value={address.coords} onChange={(coords) => setAddress({ ...address, coords })} height={300} />
+                              <div className="flex justify-end space-x-2">
+                                <Button variant="outline">Cancel</Button>
+                                <Button onClick={handleSaveAddress}>Save</Button>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+            {/* Village Coverage */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card><CardContent>No village stats available.</CardContent></Card>
-              <Card><CardContent>No health metrics available.</CardContent></Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Village Coverage</CardTitle>
+                  <CardDescription>Patients per village</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {(() => {
+                      const total = mockPatients.length || 1;
+                      return Array.from(new Set(mockPatients.map(p => p.village))).map(v => {
+                        const count = mockPatients.filter(p => p.village === v).length;
+                        const percent = Math.round((count / total) * 100);
+                        return (
+                          <div key={v}>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm font-medium">{v}</div>
+                              <div className="text-sm text-muted-foreground">{count} • {percent}%</div>
+                            </div>
+                            <Progress value={percent} />
+                          </div>
+                        )
+                      })
+                    })()}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Health Metrics</CardTitle>
+                  <CardDescription>Simple vitals overview</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {(() => {
+                      const avgSystolic = Math.round(mockPatients.reduce((s, p) => s + parseInt(p.vitals.bp.split('/')[0]), 0) / mockPatients.length);
+                      const avgTemp = (mockPatients.reduce((s, p) => s + parseFloat(p.vitals.temperature), 0) / mockPatients.length);
+                      const avgHeart = Math.round(mockPatients.reduce((s, p) => s + (p.vitals.heartRate || 0), 0) / mockPatients.length);
+                      const avgSugar = Math.round(mockPatients.reduce((s, p) => s + (p.vitals.bloodSugar || 0), 0) / mockPatients.length);
+                      // For display, map systolic range [100..160] to 0..100
+                      const bpPercent = Math.max(0, Math.min(100, Math.round(((avgSystolic - 100) / 60) * 100)));
+                      // Map temperature closeness to 98.6F -> 100% within +/-2.5F
+                      const tempDiff = Math.abs(avgTemp - 98.6);
+                      const tempPercent = Math.max(0, Math.min(100, Math.round((1 - (tempDiff / 2.5)) * 100)));
+
+                      return (
+                        <>
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm font-medium">Average Systolic BP</div>
+                              <div className="text-sm text-muted-foreground">{avgSystolic} mmHg</div>
+                            </div>
+                            <Progress value={bpPercent} />
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm font-medium">Average Temperature</div>
+                              <div className="text-sm text-muted-foreground">{avgTemp.toFixed(1)} °F</div>
+                            </div>
+                            <Progress value={tempPercent} />
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm font-medium">Average Heart Rate</div>
+                              <div className="text-sm text-muted-foreground">{avgHeart} bpm</div>
+                            </div>
+                            <Progress value={Math.max(0, Math.min(100, Math.round((avgHeart / 140) * 100)))} />
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-sm font-medium">Average Blood Sugar</div>
+                              <div className="text-sm text-muted-foreground">{avgSugar} mg/dL</div>
+                            </div>
+                            <Progress value={Math.max(0, Math.min(100, Math.round((avgSugar / 200) * 100)))} />
+                          </div>
+                        </>
+                      )
+                    })()}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Recent Activities and Disease Distribution - Placeholder */}
+            {/* Recent Activities and Disease Distribution */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card><CardContent>No recent activities available.</CardContent></Card>
-              <Card><CardContent>No disease data available.</CardContent></Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Activities</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {mockPrescriptions.slice(0,3).map(p => (
+                      <div key={p._id} className="flex items-center justify-between">
+                        <div>{p.patient} - {p.location}</div>
+                        <div className="text-sm text-muted-foreground">{p.medicines.length} meds</div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Disease Distribution</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-6">
+                    <div style={{ width: 200, height: 160 }}>
+                      <ResponsiveContainer width="100%" height={160}>
+                        <PieChart>
+                          <Pie data={diseaseData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} label>
+                            {diseaseData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="space-y-2">
+                      {diseaseData.map((d, i) => (
+                        <div key={d.name} className="flex items-center space-x-3">
+                          <span className="w-3 h-3 rounded-sm" style={{ background: COLORS[i % COLORS.length] }} />
+                          <div>
+                            <div className="text-sm font-medium">{d.name}</div>
+                            <div className="text-xs text-muted-foreground">{d.value} patients</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Monthly Trends - Placeholder */}
-            <Card><CardContent>No monthly trends available.</CardContent></Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Monthly Trends</CardTitle>
+                <CardDescription>Last 6 months overview</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                  <div className="col-span-2">
+                    <ResponsiveContainer width="100%" height={200}>
+                      <LineChart data={monthlyData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="month" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="prescriptions" stroke="#3b82f6" strokeWidth={2} />
+                        <Line type="monotone" dataKey="newPatients" stroke="#10b981" strokeWidth={2} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    <div className="mt-6">
+                      <h4 className="text-sm font-medium mb-2">Diagnosed Diseases — Monthly (stacked)</h4>
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart data={diseaseMonthlyData} layout="vertical" barCategoryGap="20%" barGap={4}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" type="category" />
+                          <YAxis type="number" />
+                          <Tooltip />
+                          <Legend />
+                          {diseaseNames.map((d, i) => (
+                            <Bar key={d} dataKey={d} stackId="a" fill={COLORS[i % COLORS.length]} />
+                          ))}
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="p-4 bg-card rounded">
+                      <div className="text-sm text-muted-foreground">Avg Prescriptions / month</div>
+                      <div className="text-2xl font-bold">{avgPrescriptionsPerMonth}</div>
+                    </div>
+
+                    <div className="p-4 bg-card rounded">
+                      <div className="text-sm text-muted-foreground">New patients this month</div>
+                      <div className="text-2xl font-bold">{newPatientsThisMonth}</div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="patients" className="space-y-6">
@@ -308,8 +677,27 @@ export default function ASHADashboard() {
             <Card>
               <CardContent className="p-6">
                 <div className="space-y-4">
-                  {/* No patient data available */}
-                  <div className="border rounded-lg p-4 text-center text-muted-foreground">No patients available.</div>
+                  {/* Use mock patients when none are fetched */}
+                  {mockPatients.length === 0 ? (
+                    <div className="border rounded-lg p-4 text-center text-muted-foreground">No patients available.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {mockPatients.map((p) => (
+                        <div key={p.id} className="p-4 border rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h3 className="font-semibold">{p.name}</h3>
+                              <p className="text-sm text-muted-foreground">{p.village} • {p.age} yrs</p>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm">{p.condition}</div>
+                              <div className="text-xs text-muted-foreground">Phone: {p.phone}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

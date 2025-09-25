@@ -11,15 +11,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Progress } from "@/components/ui/progress"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Heart, Upload, Calendar, FileText, Video, MessageCircle, Activity, User, CheckCircle } from "lucide-react"
+import { Heart, Upload, Calendar, FileText, Video, MessageCircle, Activity, User, CheckCircle, Phone, Users, FilePlus } from "lucide-react"
 import io from "socket.io-client"
+import MapPicker from '@/components/map-picker'
 
 export default function PatientDashboard() {
   // State for real user info
   const [user, setUser] = useState<any>(null);
+
+  const [address, setAddress] = useState<any>({ street: '', city: '', state: '', pincode: '', coords: { lat: 30.3573, lng: 76.0700 } })
+  useEffect(() => {
+    if (user && user.address) setAddress(user.address)
+  }, [user])
 
   useEffect(() => {
     // Get token from localStorage (or cookies)
@@ -81,6 +96,7 @@ export default function PatientDashboard() {
   }, [])
 
   const startPeerConnection = async () => {
+    // default: video + audio. If we need audio-only, caller will call startPeerConnectionWithOptions
     peerConnectionRef.current = new RTCPeerConnection()
     peerConnectionRef.current.onicecandidate = (event) => {
       if (event.candidate) {
@@ -92,7 +108,29 @@ export default function PatientDashboard() {
         remoteVideoRef.current.srcObject = event.streams[0]
       }
     }
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream
+    }
+    stream.getTracks().forEach((track) => {
+      peerConnectionRef.current?.addTrack(track, stream)
+    })
+  }
+
+  // New helper to start a peer connection with options (audioOnly)
+  const startPeerConnectionWithOptions = async (opts: { audioOnly?: boolean } = {}) => {
+    peerConnectionRef.current = new RTCPeerConnection()
+    peerConnectionRef.current.onicecandidate = (event) => {
+      if (event.candidate) {
+        socketRef.current.emit("ice-candidate", { candidate: event.candidate })
+      }
+    }
+    peerConnectionRef.current.ontrack = (event) => {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = event.streams[0]
+      }
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ video: opts.audioOnly ? false : true, audio: true })
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream
     }
@@ -103,7 +141,20 @@ export default function PatientDashboard() {
 
   const handleVCClick = async (doctorId: string) => {
     setInCall(true)
-    await startPeerConnection()
+    // set modal and room id so UI shows
+    setVideoCallRoomId(doctorId)
+    setVideoCallOpen(true)
+    await startPeerConnectionWithOptions({ audioOnly: false })
+    const offer = await peerConnectionRef.current?.createOffer()
+    await peerConnectionRef.current?.setLocalDescription(offer)
+    socketRef.current.emit("offer", { offer, to: doctorId })
+  }
+
+  const handleAudioCall = async (doctorId: string) => {
+    setInCall(true)
+    setVideoCallRoomId(doctorId)
+    setVideoCallOpen(true)
+    await startPeerConnectionWithOptions({ audioOnly: true })
     const offer = await peerConnectionRef.current?.createOffer()
     await peerConnectionRef.current?.setLocalDescription(offer)
     socketRef.current.emit("offer", { offer, to: doctorId })
@@ -118,6 +169,104 @@ export default function PatientDashboard() {
   }
 
   // Mock data
+
+  // Mock vitals for demo (replace with backend data when available)
+  const mockVitals = {
+    bp: '128/82',
+    heartRate: 78,
+    bloodSugar: 110,
+    temperature: 98.4,
+  }
+
+  // Mock upcoming appointments and reports for demo (stateful so buttons can modify)
+  const [mockAppointments, setMockAppointments] = useState([
+    { id: 'a1', date: '2025-10-02', time: '10:00', doctor: 'Dr. Priya Sharma', status: 'confirmed', type: 'Video' },
+    { id: 'a2', date: '2025-10-10', time: '14:30', doctor: 'Dr. Rajesh Kumar', status: 'pending', type: 'In-person' },
+    { id: 'a3', date: '2025-11-01', time: '09:00', doctor: 'Dr. Neha Verma', status: 'confirmed', type: 'Phone' },
+  ])
+
+  const [mockReports, setMockReports] = useState([
+    { id: 'r1', title: 'Complete Blood Count', date: '2025-09-15', type: 'Lab', file: 'cbc_2025_09_15.pdf' },
+    { id: 'r2', title: 'Chest X-Ray', date: '2025-08-20', type: 'Imaging', file: 'xray_2025_08_20.jpg' },
+    { id: 'r3', title: 'ECG Report', date: '2025-07-12', type: 'Cardio', file: 'ecg_2025_07_12.pdf' },
+  ])
+
+  // Local state for booking form
+  const [appointmentDateState, setAppointmentDateState] = useState('')
+  const [appointmentTimeState, setAppointmentTimeState] = useState('')
+
+  // Handlers for buttons
+  const handleDownload = (report: any) => {
+    // Simulate a download by creating a blob and clicking a link
+    const content = `Report: ${report.title}\nType: ${report.type}\nDate: ${report.date}`
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = report.file || `${report.id}.txt`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleUploadReport = () => {
+    if (!selectedFile) {
+      alert('Select a file first')
+      return
+    }
+    const newReport = {
+      id: `r${Date.now()}`,
+      title: selectedFile.name,
+      date: new Date().toISOString().slice(0, 10),
+      type: 'Uploaded',
+      file: selectedFile.name,
+    }
+    setMockReports(prev => [newReport, ...prev])
+    setSelectedFile(null)
+    alert('Report uploaded (demo)')
+  }
+
+  const handleSaveAddress = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    fetch('/api/patient/address', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ address })
+    }).then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        setUser((prev: any) => ({ ...prev, address: data.address || address }))
+        // success toast could be added
+      } else {
+        setUser((prev: any) => ({ ...prev, address }))
+      }
+    }).catch(() => setUser((prev: any) => ({ ...prev, address })))
+  }
+
+  const handleBookNow = () => {
+    if (!consultationType || !selectedDoctor || !appointmentDateState) {
+      alert('Select consultation type, doctor and date before booking')
+      return
+    }
+    const newAppointment = {
+      id: `a${Date.now()}`,
+      date: appointmentDateState,
+      time: appointmentTimeState || '09:00',
+      doctor: selectedDoctor,
+      status: 'pending',
+      type: consultationType,
+    }
+    setMockAppointments(prev => [newAppointment, ...prev])
+    alert('Appointment booked (demo)')
+  }
+
+  const handleCancelAppointment = (id: string) => {
+    if (!confirm('Cancel this appointment?')) return
+    setMockAppointments(prev => prev.filter(a => a.id !== id))
+  }
 
   // TODO: Replace with real backend data for appointments, reports, health metrics, and available doctors
 
@@ -175,10 +324,134 @@ export default function PatientDashboard() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
+            {/* Summary stats row */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                      <div className="text-sm text-muted-foreground flex items-center gap-2"><Calendar className="h-4 w-4" />Appointments</div>
+                    <div className="text-2xl font-bold">3</div>
+                  </div>
+                  <div className="bg-primary/10 text-primary p-3 rounded-lg">
+                    <Calendar className="h-6 w-6" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground flex items-center gap-2"><Users className="h-4 w-4" />Patients</div>
+                    <div className="text-2xl font-bold">3</div>
+                  </div>
+                  <div className="bg-secondary/10 text-secondary p-3 rounded-lg">
+                    <Users className="h-6 w-6" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground flex items-center gap-2"><FileText className="h-4 w-4" />Reports</div>
+                    <div className="text-2xl font-bold">2</div>
+                  </div>
+                  <div className="bg-accent/10 text-accent p-3 rounded-lg">
+                    <FileText className="h-6 w-6" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-muted-foreground flex items-center gap-2"><FilePlus className="h-4 w-4" />Prescriptions</div>
+                    <div className="text-2xl font-bold">3</div>
+                  </div>
+                  <div className="bg-yellow-100 text-yellow-800 p-3 rounded-lg">
+                    <FilePlus className="h-6 w-6" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Address Card for Patient */}
+            <div className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Address</CardTitle>
+                  <CardDescription>Your saved address</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="font-medium">{address.street || address.formatted || 'No address set'}</div>
+                      <div className="text-sm text-muted-foreground">{address.city ? `${address.city}, ${address.state} - ${address.pincode || ''}` : ''}</div>
+                    </div>
+                    <div>
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button size="sm">Edit</Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-3xl">
+                          <DialogHeader>
+                            <DialogTitle>Edit Address</DialogTitle>
+                            <DialogDescription>Drag the marker to select location and update address fields</DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <Input placeholder="Street" value={address.street || address.formatted || ''} onChange={(e) => setAddress({ ...address, street: e.target.value })} />
+                            <div className="grid grid-cols-3 gap-2">
+                              <Input placeholder="City" value={address.city || ''} onChange={(e) => setAddress({ ...address, city: e.target.value })} />
+                              <Input placeholder="State" value={address.state || ''} onChange={(e) => setAddress({ ...address, state: e.target.value })} />
+                              <Input placeholder="Pincode" value={address.pincode || ''} onChange={(e) => setAddress({ ...address, pincode: e.target.value })} />
+                            </div>
+                            <MapPicker apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY} value={address.coords} onChange={(coords) => setAddress({ ...address, coords })} height={300} />
+                            <div className="flex justify-end space-x-2">
+                              <Button variant="outline">Cancel</Button>
+                              <Button onClick={handleSaveAddress}>Save</Button>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
             {/* Health Metrics */}
             {/* Health Metrics - Replace with backend data */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card><CardContent className="p-4">No health metrics available.</CardContent></Card>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-sm text-muted-foreground">Blood Pressure</div>
+                  <div className="text-xl font-bold">{mockVitals.bp}</div>
+                  <div className="text-xs text-muted-foreground mt-2">Systolic / Diastolic</div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-sm text-muted-foreground">Heart Rate</div>
+                  <div className="text-xl font-bold">{mockVitals.heartRate} bpm</div>
+                  <Progress value={Math.max(0, Math.min(100, Math.round((mockVitals.heartRate / 140) * 100)))} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-sm text-muted-foreground">Blood Sugar</div>
+                  <div className="text-xl font-bold">{mockVitals.bloodSugar} mg/dL</div>
+                  <Progress value={Math.max(0, Math.min(100, Math.round((mockVitals.bloodSugar / 200) * 100)))} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4">
+                  <div className="text-sm text-muted-foreground">Temperature</div>
+                  <div className="text-xl font-bold">{mockVitals.temperature} °F</div>
+                  <Progress value={Math.max(0, Math.min(100, Math.round(((mockVitals.temperature - 95) / 10) * 100)))} />
+                </CardContent>
+              </Card>
             </div>
 
             {/* Quick Actions */}
@@ -222,8 +495,31 @@ export default function PatientDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* Upcoming Appointments - Replace with backend data */}
-                    <div>No upcoming appointments available.</div>
+                    {/* Upcoming Appointments - demo data */}
+                    {mockAppointments.length === 0 ? (
+                      <div>No upcoming appointments available.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {mockAppointments.map(a => (
+                          <div key={a.id} className="p-3 border rounded flex items-center justify-between">
+                            <div>
+                              <div className="font-medium">{a.doctor} • {a.type}</div>
+                              <div className="text-sm text-muted-foreground">{a.date} • {a.time}</div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className={`px-2 py-1 rounded text-xs ${getStatusColor(a.status)}`}>{a.status}</span>
+                              <Button size="sm" variant="ghost" onClick={() => handleVCClick(a.doctor)}>
+                                <Video className="h-4 w-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => handleAudioCall(a.doctor)}>
+                                <Phone className="h-4 w-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => handleCancelAppointment(a.id)}>Cancel</Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -234,8 +530,24 @@ export default function PatientDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* Recent Reports - Replace with backend data */}
-                    <div>No recent reports available.</div>
+                    {/* Recent Reports - demo data */}
+                    {mockReports.length === 0 ? (
+                      <div>No recent reports available.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {mockReports.map(r => (
+                          <div key={r.id} className="p-3 border rounded flex items-center justify-between">
+                            <div>
+                              <div className="font-medium">{r.title}</div>
+                              <div className="text-sm text-muted-foreground">{r.type} • {r.date}</div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <Button variant="outline" size="sm" onClick={() => handleDownload(r)}>Download</Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -250,8 +562,25 @@ export default function PatientDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {/* My Appointments - Replace with backend data */}
-                  <div>No appointments available.</div>
+                  {/* My Appointments - demo data */}
+                  {mockAppointments.length === 0 ? (
+                    <div>No appointments available.</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {mockAppointments.map(a => (
+                        <div key={a.id} className="p-3 border rounded flex items-center justify-between">
+                          <div>
+                            <div className="font-medium">{a.doctor} • {a.type}</div>
+                            <div className="text-sm text-muted-foreground">{a.date} • {a.time}</div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <span className={`px-2 py-1 rounded text-xs ${getStatusColor(a.status)}`}>{a.status}</span>
+                            <Button size="sm" variant="ghost" onClick={() => handleCancelAppointment(a.id)}>Cancel</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -294,7 +623,7 @@ export default function PatientDashboard() {
 
                 <Button className="w-full" disabled={!selectedFile}>
                   <Upload className="h-4 w-4 mr-2" />
-                  Upload Report
+                  <span onClick={handleUploadReport}>Upload Report</span>
                 </Button>
               </CardContent>
             </Card>
@@ -305,8 +634,24 @@ export default function PatientDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {/* My Reports - Replace with backend data */}
-                  <div>No reports available.</div>
+                  {/* My Reports - demo data */}
+                  {mockReports.length === 0 ? (
+                    <div>No reports available.</div>
+                  ) : (
+                      <div className="space-y-2">
+                      {mockReports.map(r => (
+                        <div key={r.id} className="flex items-center justify-between p-3 border rounded">
+                          <div>
+                            <div className="font-medium">{r.title}</div>
+                            <div className="text-sm text-muted-foreground">{r.type} • {r.date}</div>
+                          </div>
+                          <div>
+                            <Button size="sm" variant="outline" onClick={() => handleDownload(r)}>Download</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -347,7 +692,7 @@ export default function PatientDashboard() {
 
                 <div className="space-y-2">
                   <Label htmlFor="appointment-date">Preferred Date</Label>
-                  <Input id="appointment-date" type="date" />
+                  <Input id="appointment-date" type="date" value={appointmentDateState} onChange={(e) => setAppointmentDateState(e.target.value)} />
                 </div>
 
                 <div className="space-y-2">
@@ -372,7 +717,7 @@ export default function PatientDashboard() {
                   <Textarea id="symptoms" placeholder="Describe your symptoms or reason for consultation..." />
                 </div>
 
-                <Button className="w-full" disabled={!consultationType || !selectedDoctor}>
+                <Button className="w-full" onClick={handleBookNow}>
                   <Calendar className="h-4 w-4 mr-2" />
                   Book Appointment
                 </Button>
@@ -389,8 +734,27 @@ export default function PatientDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* Health Metrics - Replace with backend data */}
-                    <div>No health metrics available.</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="p-4 border rounded">
+                        <div className="text-sm text-muted-foreground">Latest Blood Pressure</div>
+                        <div className="text-lg font-bold">{mockVitals.bp}</div>
+                      </div>
+
+                      <div className="p-4 border rounded">
+                        <div className="text-sm text-muted-foreground">Latest Heart Rate</div>
+                        <div className="text-lg font-bold">{mockVitals.heartRate} bpm</div>
+                      </div>
+
+                      <div className="p-4 border rounded">
+                        <div className="text-sm text-muted-foreground">Latest Blood Sugar</div>
+                        <div className="text-lg font-bold">{mockVitals.bloodSugar} mg/dL</div>
+                      </div>
+
+                      <div className="p-4 border rounded">
+                        <div className="text-sm text-muted-foreground">Latest Temperature</div>
+                        <div className="text-lg font-bold">{mockVitals.temperature} °F</div>
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

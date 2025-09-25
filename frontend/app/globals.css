@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+/* Import the shared styles so `styles/globals.css` applies across the app */
+@import "../styles/globals.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -124,3 +126,89 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Doctors card animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.doctor-card {
+  animation: fadeUp 420ms cubic-bezier(.2,.9,.2,1) both;
+}
+
+.doctor-img {
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.doctor-img:hover {
+  transform: translateY(-4px) scale(1.03);
+  box-shadow: 0 6px 18px rgba(16,24,40,0.12);
+}
+
+/* -------------------------------
+   Theme fallbacks and utility mappings
+   These ensure colors render even if Tailwind variable-to-utility mapping
+   isn't available in some environments.
+   ------------------------------- */
+
+:root {
+  /* Friendly, accessible healthcare palette (fallback hex values) */
+  --background: #ffffff;
+  --foreground: #0f172a; /* slate-900 */
+  --card: #f8fafc; /* slate-50 */
+  --card-foreground: #0f172a;
+  --popover: #ecfdf5;
+  --popover-foreground: #0f172a;
+  --primary: #10b981; /* green-500 */
+  --primary-foreground: #ffffff;
+  --secondary: #3b82f6; /* blue-500 */
+  --secondary-foreground: #ffffff;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #06b6d4;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e6eef6;
+  --input: #ffffff;
+  --ring:  rgba(16, 185, 129, 0.24);
+  --chart-1: #10b981;
+  --chart-2: #3b82f6;
+  --chart-3: #f59e0b;
+  --chart-4: #f97316;
+  --chart-5: #ef4444;
+  --radius: 0.5rem;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f172a;
+}
+
+/* Utility class fallbacks used across the app */
+.bg-background { background-color: var(--background) !important; }
+.text-foreground { color: var(--foreground) !important; }
+.bg-card { background-color: var(--card) !important; }
+.text-card-foreground { color: var(--card-foreground) !important; }
+.bg-popover { background-color: var(--popover) !important; }
+.text-popover-foreground { color: var(--popover-foreground) !important; }
+.bg-primary { background-color: var(--primary) !important; }
+.text-primary-foreground { color: var(--primary-foreground) !important; }
+.bg-secondary { background-color: var(--secondary) !important; }
+.text-secondary-foreground { color: var(--secondary-foreground) !important; }
+.text-muted-foreground { color: var(--muted-foreground) !important; }
+.border-border { border-color: var(--border) !important; }
+.bg-input { background-color: var(--input) !important; }
+.outline-ring\/50 { box-shadow: 0 0 0 4px var(--ring) !important; }
+
+/* Button friendly defaults (works with existing Button variants) */
+.btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.5rem 1rem; border-radius: 0.375rem; font-weight: 600; }
+.btn-primary { background-color: var(--primary); color: var(--primary-foreground); }
+.btn-secondary { background-color: var(--secondary); color: var(--secondary-foreground); }
+.btn-destructive { background-color: var(--destructive); color: var(--destructive-foreground); }
+
+/* Card default */
+.card { background-color: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: var(--radius); }
+
+/* Small helpers */
+.muted { color: var(--muted-foreground); }
+.accent { color: var(--accent); }
+
+

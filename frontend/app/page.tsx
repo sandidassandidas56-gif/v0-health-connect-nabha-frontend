@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import Link from "next/link"
 import { Heart, Users, Activity, Shield, Clock, MapPin } from "lucide-react"
+import DoctorsList from "./_components/doctors-list"
 
 export default function HomePage() {
   return (
@@ -114,6 +115,13 @@ export default function HomePage() {
               </CardHeader>
             </Card>
           </div>
+        </div>
+      </section>
+
+      {/* Doctors slot - dynamic list fetched from backend */}
+      <section className="py-12 bg-muted">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <DoctorsList />
         </div>
       </section>
 

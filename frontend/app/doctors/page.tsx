@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { Star, MapPin, Clock, Video, MessageCircle } from "lucide-react"
+import doctors from "@/data/doctors"
 
 export default function DoctorsPage() {
   // TODO: Replace with real backend data for doctors
@@ -21,9 +22,30 @@ export default function DoctorsPage() {
           </p>
         </div>
 
-        {/* Doctors Grid - Replace with backend data */}
+        {/* Doctors Grid - local mock data */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          <Card><CardContent className="p-4">No doctors available.</CardContent></Card>
+          {doctors.map((d) => (
+            <Card key={d.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader className="flex items-center gap-4">
+                <img src={d.image} alt={d.name} className="w-16 h-16 rounded-full object-cover" />
+                <div>
+                  <CardTitle className="text-sm">{d.name}</CardTitle>
+                  <CardDescription className="text-xs">{d.specialization}</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4">
+                <p className="text-sm text-muted-foreground">Experienced and trusted practitioner in {d.specialization}.</p>
+                <div className="mt-4 flex gap-2">
+                  <Button size="sm" asChild>
+                    <Link href={`/doctors`}>View Profile</Link>
+                  </Button>
+                  <Button size="sm" variant="outline" asChild>
+                    <Link href="/auth">Book</Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
         {/* CTA Section */}

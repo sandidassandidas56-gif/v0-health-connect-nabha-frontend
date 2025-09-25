@@ -8,6 +8,7 @@ require('./db'); // Connect to MongoDB Atlas
 app.use(express.json());
 app.use('/api/auth/signup', require('./api/auth/signup'));
 app.use('/api/auth/login', require('./api/auth/login'));
+app.use('/api/doctors', require('./api/doctors'));
 
 // Add your signaling server code here if needed
 // Example:

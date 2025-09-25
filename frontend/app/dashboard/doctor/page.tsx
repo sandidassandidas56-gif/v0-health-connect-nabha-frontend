@@ -18,16 +18,24 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Stethoscope, Calendar, FileText, Video, MessageCircle, User, Pill, Eye, Send } from "lucide-react"
+import MapPicker from '@/components/map-picker'
 import io from "socket.io-client";
 import { useEffect, useRef, useState } from "react";
+import {
+  mockDoctorProfile,
+  mockAppointments,
+  mockPatients,
+  mockReports,
+  mockPrescriptions,
+} from "@/data/doctor-mock";
 import dynamic from "next/dynamic"
-import Sidebar from "@/components/sidebar"
 // Dynamically import VideoCallModal to avoid SSR issues
 const VideoCallModal = dynamic(() => import("@/components/VideoCallModal"), { ssr: false })
 
 export default function DoctorDashboard() {
   const [videoCallOpen, setVideoCallOpen] = useState(false);
   const [videoCallRoomId, setVideoCallRoomId] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<string>("overview");
   // Open video call modal with a room ID
   const startVideoCall = (roomId: string) => {
     setVideoCallRoomId(roomId);
@@ -51,46 +59,62 @@ export default function DoctorDashboard() {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const [inCall, setInCall] = useState(false);
 
-  // Mock data
+  // Real backend data state
+  const [doctorInfo, setDoctorInfo] = useState<any>(mockDoctorProfile);
+  const [appointments, setAppointments] = useState<any[]>(mockAppointments);
+  const [patients, setPatients] = useState<any[]>(mockPatients);
+  const [reports, setReports] = useState<any[]>(mockReports);
+  const [prescriptions, setPrescriptions] = useState<any[]>(mockPrescriptions);
+  const [usingMock, setUsingMock] = useState<boolean>(false);
 
-  // TODO: Replace with real backend data for appointments, patient history, reports, and dashboard stats
+  // Fetch all dashboard data from backend
+  useEffect(() => {
+    // Example endpoints, update as needed
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const getHeaders = () => token ? { Authorization: `Bearer ${token}` } : undefined;
+    // Attempt to fetch real data; fall back to mock data if requests fail
+    const tryFetch = async (url: string, setter: (v: any) => void, fallback: any) => {
+      try {
+        const res = await fetch(url, getHeaders() ? { headers: getHeaders() } : undefined);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && (Array.isArray(data) ? data.length > 0 : Object.keys(data).length > 0)) {
+            setter(data);
+            return;
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+      setter(fallback);
+      setUsingMock(true);
+    };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high":
-        return "bg-red-100 text-red-800"
-      case "medium":
-        return "bg-yellow-100 text-yellow-800"
-      case "low":
-        return "bg-green-100 text-green-800"
-      default:
-        return "bg-gray-100 text-gray-800"
+    tryFetch("http://localhost:5001/api/doctor/profile", setDoctorInfo, mockDoctorProfile);
+    tryFetch("http://localhost:5001/api/doctor/appointments", setAppointments, mockAppointments);
+    tryFetch("http://localhost:5001/api/doctor/patients", setPatients, mockPatients);
+    tryFetch("http://localhost:5001/api/doctor/reports", setReports, mockReports);
+    tryFetch("http://localhost:5001/api/doctor/prescriptions", setPrescriptions, mockPrescriptions);
+  }, []);
+
+  const handlePrescriptionSubmit = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : "";
+    const headers = {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+    const res = await fetch("http://localhost:5001/api/doctor/prescriptions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ ...prescriptionData, patientId: selectedPatient?.id })
+    });
+    if (res.ok) {
+      setPrescriptionData({ medication: "", dosage: "", frequency: "", duration: "", instructions: "" });
+      // Refresh prescriptions
+      fetch("http://localhost:5001/api/doctor/prescriptions", { headers })
+        .then(r => r.json())
+        .then(data => setPrescriptions(data));
     }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "upcoming":
-        return "bg-blue-100 text-blue-800"
-      case "in-progress":
-        return "bg-green-100 text-green-800"
-      case "completed":
-        return "bg-gray-100 text-gray-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
-
-  const handlePrescriptionSubmit = () => {
-    // Handle prescription submission
-    console.log("Prescription submitted:", prescriptionData)
-    setPrescriptionData({
-      medication: "",
-      dosage: "",
-      frequency: "",
-      duration: "",
-      instructions: "",
-    })
   }
 
   useEffect(() => {
@@ -137,21 +161,42 @@ export default function DoctorDashboard() {
     });
   };
 
-  // Mock user info (replace with real backend data)
-  const user = {
-    name: "Dr. Priya Sharma",
-    email: "priya.sharma@example.com",
-    role: "doctor",
-    phone: "9876543210"
-  };
+  // Use real doctor info from backend
+  const user = doctorInfo || { name: "", email: "", role: "doctor", phone: "" };
+
+  const [address, setAddress] = useState<any>(doctorInfo?.address || { street: '', city: '', state: '', pincode: '', coords: { lat: 30.3573, lng: 76.0700 } })
+  useEffect(() => {
+    setAddress(doctorInfo?.address || { street: '', city: '', state: '', pincode: '', coords: { lat: 30.3573, lng: 76.0700 } })
+  }, [doctorInfo])
+
+  const handleSaveAddress = () => {
+    // Persist address to backend if available
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers: any = { "Content-Type": "application/json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    fetch("http://localhost:5001/api/doctor/address", {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ address })
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          setDoctorInfo((prev: any) => ({ ...prev, address: data.address || address }))
+          // nice UX later: toast
+        } else {
+          // fallback to local update
+          setDoctorInfo((prev: any) => ({ ...prev, address }))
+        }
+      })
+      .catch(() => {
+        // on error, keep local update so UI remains responsive
+        setDoctorInfo((prev: any) => ({ ...prev, address }))
+      })
+  }
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Sidebar */}
-      <div className="hidden md:block">
-        <Sidebar user={user} />
-      </div>
-
+    <div className="min-h-screen bg-background">
       <div className="flex-1">
         {/* Header */}
         <div className="bg-primary text-primary-foreground p-6">
@@ -159,7 +204,7 @@ export default function DoctorDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold">Doctor Dashboard</h1>
-                <p className="opacity-90">{user.name} - General Medicine</p>
+                <p className="opacity-90">{user.name} {doctorInfo?.specialization ? `- ${doctorInfo.specialization}` : ""}</p>
               </div>
               <div className="flex items-center space-x-4">
                 <Button variant="secondary" size="sm">
@@ -175,7 +220,7 @@ export default function DoctorDashboard() {
         </div>
 
         <div className="max-w-7xl mx-auto p-6">
-          <Tabs defaultValue="overview" className="w-full">
+          <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v)} className="w-full">
             <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="appointments">Appointments</TabsTrigger>
@@ -185,10 +230,62 @@ export default function DoctorDashboard() {
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
-              {/* Dashboard Stats */}
-              {/* Dashboard Stats - Replace with backend data */}
+              {usingMock && (
+                <div className="p-3 rounded-md bg-popover text-popover-foreground border border-border">
+                  You're viewing demo data (mock). Real backend data will appear when available.
+                </div>
+              )}
+              {/* Dashboard Stats - Real data */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Card><CardContent className="p-4">No dashboard stats available.</CardContent></Card>
+                {/* Example: show total appointments, patients, reports, prescriptions */}
+                <Card><CardContent className="p-4">Appointments: {appointments.length}</CardContent></Card>
+                <Card><CardContent className="p-4">Patients: {patients.length}</CardContent></Card>
+                <Card><CardContent className="p-4">Reports: {reports.length}</CardContent></Card>
+                <Card><CardContent className="p-4">Prescriptions: {prescriptions.length}</CardContent></Card>
+              </div>
+
+              {/* Address Card */}
+              <div className="mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Address</CardTitle>
+                    <CardDescription>Clinic / Home address</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="font-medium">{address.street}</div>
+                        <div className="text-sm text-muted-foreground">{address.city}, {address.state} - {address.pincode}</div>
+                      </div>
+                      <div>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button size="sm">Edit</Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-3xl">
+                            <DialogHeader>
+                              <DialogTitle>Edit Address</DialogTitle>
+                              <DialogDescription>Drag the marker to select location and update address fields</DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <Input placeholder="Street" value={address.street} onChange={(e) => setAddress({ ...address, street: e.target.value })} />
+                              <div className="grid grid-cols-3 gap-2">
+                                <Input placeholder="City" value={address.city} onChange={(e) => setAddress({ ...address, city: e.target.value })} />
+                                <Input placeholder="State" value={address.state} onChange={(e) => setAddress({ ...address, state: e.target.value })} />
+                                <Input placeholder="Pincode" value={address.pincode} onChange={(e) => setAddress({ ...address, pincode: e.target.value })} />
+                              </div>
+                              <MapPicker apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY} value={address.coords} onChange={(coords) => setAddress({ ...address, coords })} height={300} />
+                              <div className="flex justify-end space-x-2">
+                                <Button variant="outline" onClick={() => { /* close handled by Dialog */ }}>Cancel</Button>
+                                <Button onClick={handleSaveAddress}>Save</Button>
+                              </div>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
 
               {/* Today's Schedule */}
@@ -200,8 +297,21 @@ export default function DoctorDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {/* Today's Appointments - Replace with backend data */}
-                      <div>No appointments available.</div>
+                      {/* Today's Appointments - Real data */}
+                              {(() => {
+                                const displayAppointments = (appointments && appointments.length > 0) ? appointments : mockAppointments;
+                                const todays = displayAppointments.filter((a: any) => a.date === new Date().toISOString().slice(0,10));
+                                if (todays.length === 0) return <div>No appointments available.</div>;
+                                return todays.map((a: any) => (
+                          <div key={a.id} className="border rounded-lg p-2 flex justify-between items-center">
+                            <div>
+                              <div className="font-semibold">{a.patientName}</div>
+                              <div className="text-sm text-muted-foreground">{a.time}</div>
+                            </div>
+                            <Badge>{a.status}</Badge>
+                          </div>
+                                  ))
+                              })()}
                     </div>
                   </CardContent>
                 </Card>
@@ -213,8 +323,21 @@ export default function DoctorDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {/* Pending Reports - Replace with backend data */}
-                      <div>No pending reports available.</div>
+                      {/* Pending Reports - Real data */}
+                      {(() => {
+                        const displayReports = (reports && reports.length > 0) ? reports : mockReports;
+                        const pending = displayReports.filter((r: any) => r.status === "pending");
+                        if (pending.length === 0) return <div>No pending reports available.</div>;
+                        return pending.map((r: any) => (
+                          <div key={r.id} className="border rounded-lg p-2 flex justify-between items-center">
+                            <div>
+                              <div className="font-semibold">{r.patientName}</div>
+                              <div className="text-sm text-muted-foreground">{r.type}</div>
+                            </div>
+                            <Badge>{r.status}</Badge>
+                          </div>
+                        ))
+                      })()}
                     </div>
                   </CardContent>
                 </Card>
@@ -222,7 +345,7 @@ export default function DoctorDashboard() {
 
               {/* Quick Actions */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => startVideoCall(`room-${Date.now()}`)}>
                   <CardHeader>
                     <div className="bg-primary/10 text-primary p-3 rounded-lg w-fit">
                       <Video className="h-6 w-6" />
@@ -232,7 +355,7 @@ export default function DoctorDashboard() {
                   </CardHeader>
                 </Card>
 
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveTab('prescriptions')}>
                   <CardHeader>
                     <div className="bg-secondary/10 text-secondary p-3 rounded-lg w-fit">
                       <Pill className="h-6 w-6" />
@@ -242,7 +365,7 @@ export default function DoctorDashboard() {
                   </CardHeader>
                 </Card>
 
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => setActiveTab('reports')}>
                   <CardHeader>
                     <div className="bg-primary/10 text-primary p-3 rounded-lg w-fit">
                       <FileText className="h-6 w-6" />
@@ -262,8 +385,20 @@ export default function DoctorDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* All Appointments - Replace with backend data */}
-                    <div>No appointments available.</div>
+                    {/* All Appointments - Real data */}
+                    {appointments.length === 0 ? (
+                      <div>No appointments available.</div>
+                    ) : (
+                      appointments.map((a: any) => (
+                        <div key={a.id} className="border rounded-lg p-2 flex justify-between items-center">
+                          <div>
+                            <div className="font-semibold">{a.patientName}</div>
+                            <div className="text-sm text-muted-foreground">{a.date} {a.time}</div>
+                          </div>
+                          <Badge>{a.status}</Badge>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -292,8 +427,20 @@ export default function DoctorDashboard() {
                       </Select>
                     </div>
 
-                    {/* Patient Records - Replace with backend data */}
-                    <div>No patient records available.</div>
+                    {/* Patient Records - Real data */}
+                    {patients.length === 0 ? (
+                      <div>No patient records available.</div>
+                    ) : (
+                      patients.map((p: any) => (
+                        <div key={p.id} className="border rounded-lg p-2 flex justify-between items-center">
+                          <div>
+                            <div className="font-semibold">{p.name}</div>
+                            <div className="text-sm text-muted-foreground">{p.condition}</div>
+                          </div>
+                          <Badge>{p.status}</Badge>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -307,8 +454,20 @@ export default function DoctorDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* Medical Reports Review - Replace with backend data */}
-                    <div>No reports available.</div>
+                    {/* Medical Reports Review - Real data */}
+                    {reports.length === 0 ? (
+                      <div>No reports available.</div>
+                    ) : (
+                      reports.map((r: any) => (
+                        <div key={r.id} className="border rounded-lg p-2 flex justify-between items-center">
+                          <div>
+                            <div className="font-semibold">{r.patientName}</div>
+                            <div className="text-sm text-muted-foreground">{r.type}</div>
+                          </div>
+                          <Badge>{r.status}</Badge>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -324,12 +483,14 @@ export default function DoctorDashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="patient-select">Select Patient</Label>
-                      <Select>
+                      <Select onValueChange={id => setSelectedPatient(patients.find(p => p.id === id))}>
                         <SelectTrigger>
                           <SelectValue placeholder="Choose patient" />
                         </SelectTrigger>
                         <SelectContent>
-                          {/* Select Patient - Replace with backend data */}
+                          {patients.map((p: any) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -403,16 +564,22 @@ export default function DoctorDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    <div className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-semibold">John Doe</h3>
-                          <p className="text-muted-foreground">Lisinopril 10mg - Once daily for 30 days</p>
-                          <p className="text-sm text-muted-foreground">Prescribed on 2024-01-12</p>
+                    {prescriptions.length === 0 ? (
+                      <div>No prescriptions available.</div>
+                    ) : (
+                      prescriptions.map((pr: any) => (
+                        <div key={pr.id} className="border rounded-lg p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h3 className="font-semibold">{pr.patientName}</h3>
+                              <p className="text-muted-foreground">{pr.medication} {pr.dosage} - {pr.frequency} for {pr.duration}</p>
+                              <p className="text-sm text-muted-foreground">Prescribed on {pr.date}</p>
+                            </div>
+                            <Badge className="bg-green-100 text-green-800">Sent</Badge>
+                          </div>
                         </div>
-                        <Badge className="bg-green-100 text-green-800">Sent</Badge>
-                      </div>
-                    </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -425,6 +592,8 @@ export default function DoctorDashboard() {
             <video ref={remoteVideoRef} autoPlay playsInline style={{ width: 300 }} />
           </div>
         )}
+        {/* Video call modal (WebRTC) */}
+        <VideoCallModal roomId={videoCallRoomId} open={videoCallOpen} onClose={endVideoCall} />
       </div>
     </div>
   );
