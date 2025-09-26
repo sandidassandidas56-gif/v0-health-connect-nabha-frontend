@@ -5,8 +5,11 @@
   "engines": {
     "node": ">=18"
   },
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
-    "vercel-build": "cd frontend && npm ci && npm run build",
+    "vercel-build": "npm --prefix frontend ci && npm --prefix frontend run build",
     "build": "npm run vercel-build"
   },
   "dependencies": {
@@ -14,7 +17,6 @@
     "mongoose": "^8.18.1"
   },
   "devDependencies": {
-    "@types/node": "^24.5.2",
-    "next": "^14.2.32"
+    "@types/node": "^24.5.2"
   }
 }
