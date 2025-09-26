@@ -71,9 +71,7 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-border mt-8 pt-8 text-center text-muted-foreground">
-          <p>&copy; 2024 HealthConnect Nabha. All rights reserved. Powered by HealthConnect Nabha</p>
-        </div>
+        {/* copyright removed per request */}
       </div>
     </footer>
   )

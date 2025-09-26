@@ -30,11 +30,10 @@ export default function VideoCallModal({ roomId, open, onClose }: VideoCallModal
 
   useEffect(() => {
     if (!socket || !open) return;
-    let pc: RTCPeerConnection;
-    let localStream: MediaStream | undefined;
-    const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-    pc = new RTCPeerConnection(config);
-    setPeerConnection(pc);
+  const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+  const pc: RTCPeerConnection = new RTCPeerConnection(config);
+  let localStream: MediaStream | undefined;
+  setPeerConnection(pc);
 
     // Show local video immediately
     navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream: MediaStream) => {
@@ -59,7 +58,7 @@ export default function VideoCallModal({ roomId, open, onClose }: VideoCallModal
       }
     };
 
-    socket.on("signal", async ({ data }: { data: any }) => {
+  socket.on("signal", async ({ data }: { data: Record<string, any> }) => {
       if (data.offer) {
         await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
         const answer = await pc.createAnswer();

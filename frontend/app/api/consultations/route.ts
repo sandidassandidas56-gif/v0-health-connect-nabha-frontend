@@ -3,11 +3,8 @@ import { connectToDatabase } from "@/lib/db";
 import Consultation from "@/lib/models/Consultation";
 import { verifyToken } from "../auth/token";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   // JWT verification
-  const authHeader = (typeof globalThis.Headers !== "undefined" ? globalThis.Headers : undefined) ? undefined : undefined;
-  // Next.js API routes: get token from Authorization header
-  const req = arguments[0];
   const token = req.headers.get("authorization")?.replace("Bearer ", "");
   const user = token ? verifyToken(token) : null;
   if (!user) {
