@@ -1,4 +1,14 @@
 {
+  "name": "v0-health-connect-nabha-frontend-root",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "vercel-build": "cd frontend && npm ci && npm run build",
+    "build": "npm run vercel-build"
+  },
   "dependencies": {
     "dotenv": "^17.2.2",
     "mongoose": "^8.18.1"
